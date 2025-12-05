@@ -1,0 +1,46 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'streaming-lab'
+
+scrape_configs:
+  # Flink метрики
+  - job_name: 'flink'
+    static_configs:
+      - targets: ['flink-jobmanager:9250', 'flink-taskmanager:9250']
+    metrics_path: '/'
+    scrape_interval: 10s
+
+  # Kafka метрики через exporter
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+    scrape_interval: 15s
+
+  # Prometheus сам по себе
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node метрики (если нужно)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+    scrape_interval: 30s
+
+  # Data drift monitoring
+  - job_name: 'data-monitor'
+    static_configs:
+      - targets: ['data-monitor:8000']
+    scrape_interval: 60s
+
+rule_files:
+  - "alerting_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+      # Для production можно добавить Alertmanager
+      # - targets: ['alertmanager:9093']

@@ -1,0 +1,191 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - streaming-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - streaming-net
+
+  flink-jobmanager:
+    image: flink:1.15-scala_2.12
+    command: jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+    ports:
+      - "8081:8081"
+    networks:
+      - streaming-net
+
+  flink-taskmanager:
+    image: flink:1.15-scala_2.12
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+      - TASK_MANAGER_NUMBER_OF_TASK_SLOTS=4
+    networks:
+      - streaming-net
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - kafka
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka...' &&
+        sleep 30 &&
+        # Существующие топики...
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 4 --replication-factor 1 --topic user_events &&
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 4 --replication-factor 1 --topic user_recommendations &&
+        # Новые топики для fault tolerance
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --topic ml_predictions_success &&
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --topic validation_errors &&
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 2 --replication-factor 1 --topic dlq_fatal_errors &&
+        echo 'All topics created successfully'
+      "
+  
+  # Добавляем сервис для тестирования fault tolerance
+  fault-tolerance-tester:
+    build: .
+    container_name: fault-tolerance-tester
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - streaming-net
+    command: >
+      bash -c "
+        echo 'Waiting for services...' &&
+        sleep 30 &&
+        python tests/test_fault_tolerance.py
+      "
+
+  load-generator:
+    build: ./load_generator
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - streaming-net
+    
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - streaming-net
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Добавим сервис для инициализации Redis (опционально)
+  redis-init:
+    image: redis:7-alpine
+    depends_on:
+      - redis
+    networks:
+      - streaming-net
+    command: >
+      bash -c "
+        echo 'Ожидание Redis...' &&
+        sleep 10 &&
+        echo 'Redis готов!' &&
+        exit 0
+      "
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - streaming-net
+    restart: unless-stopped
+
+  # Grafana для визуализации
+  grafana:
+    image: grafana/grafana:9.5.2
+    container_name: grafana
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    networks:
+      - streaming-net
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # Kafka Exporter для метрик Kafka
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+      - "--web.listen-address=:9308"
+      - "--log.level=info"
+    ports:
+      - "9308:9308"
+    networks:
+      - streaming-net
+    depends_on:
+      - kafka
+
+  # Сервис для мониторинга данных (Evidently)
+  data-monitor:
+    build:
+      context: .
+      dockerfile: monitoring/data-monitor/Dockerfile
+    container_name: data-monitor
+    volumes:
+      - ./monitoring/data-monitor:/app
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PROMETHEUS_URL=http://prometheus:9090
+    networks:
+      - streaming-net
+    depends_on:
+      - kafka
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  
+networks:
+  streaming-net:
+    driver: bridge

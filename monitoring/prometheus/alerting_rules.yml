@@ -1,0 +1,118 @@
+groups:
+  - name: kafka_alerts
+    rules:
+      - alert: HighKafkaLag
+        expr: kafka_consumergroup_lag > 1000
+        for: 5m
+        labels:
+          severity: critical
+          service: kafka
+          environment: production
+        annotations:
+          summary: "Высокий lag в Kafka"
+          description: "Lag для {{ $labels.consumergroup }} превысил 1000 сообщений (текущее значение: {{ $value }})"
+          runbook_url: "https://wiki.example.com/kafka-lag"
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_topic_partition_under_replicated_partition > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: kafka
+        annotations:
+          summary: "Kafka under-replicated partitions"
+          description: "Topic {{ $labels.topic }} имеет under-replicated partitions"
+
+  - name: flink_alerts
+    rules:
+      - alert: HighFlinkProcessingLatency
+        expr: flink_taskmanager_job_task_operator_currentEmitEventTimeLag > 1000
+        for: 1m
+        labels:
+          severity: warning
+          service: flink
+        annotations:
+          summary: "Высокая задержка обработки во Flink"
+          description: "Задержка оператора {{ $labels.operator_name }} превысила 1000 мс (текущее значение: {{ $value }} мс)"
+
+      - alert: FlinkCheckpointFailures
+        expr: increase(flink_jobmanager_job_numberOfFailedCheckpoints[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: flink
+        annotations:
+          summary: "Flink checkpoint failures"
+          description: "Flink job {{ $labels.job_name }} имеет failed checkpoints"
+
+      - alert: FlinkTaskManagerDown
+        expr: up{job="flink"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: flink
+        annotations:
+          summary: "Flink TaskManager недоступен"
+          description: "TaskManager {{ $labels.instance }} недоступен более 1 минуты"
+
+      - alert: FlinkBackpressure
+        expr: flink_taskmanager_job_task_backPressuredTimeMsPerSecond > 500
+        for: 2m
+        labels:
+          severity: warning
+          service: flink
+        annotations:
+          summary: "Flink backpressure detected"
+          description: "Оператор {{ $labels.operator_name }} испытывает backpressure"
+
+  - name: ml_pipeline_alerts
+    rules:
+      - alert: HighMLInferenceLatency
+        expr: ml_inference_latency_p95 > 75
+        for: 5m
+        labels:
+          severity: warning
+          service: ml-pipeline
+        annotations:
+          summary: "Высокая задержка ML-инференса"
+          description: "p95 задержка ML-инференса превысила 75 мс (текущее значение: {{ $value }} мс)"
+
+      - alert: MLModelPredictionDrift
+        expr: data_drift_score > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          service: ml-pipeline
+        annotations:
+          summary: "Обнаружен drift в предсказаниях модели"
+          description: "Data drift score превысил 0.2 (текущее значение: {{ $value }})"
+
+      - alert: HighDLQRate
+        expr: rate(dlq_messages_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: ml-pipeline
+        annotations:
+          summary: "Высокая скорость попадания в DLQ"
+          description: "Более 10% сообщений попадают в DLQ"
+
+  - name: system_alerts
+    rules:
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокое использование памяти"
+          description: "Использование памяти на {{ $labels.instance }} превысило 90%"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая загрузка CPU"
+          description: "Загрузка CPU на {{ $labels.instance }} превысила 80%"

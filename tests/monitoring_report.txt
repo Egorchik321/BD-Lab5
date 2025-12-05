@@ -1,0 +1,49 @@
+============================================================
+ОТЧЕТ ПО МОНИТОРИНГУ И АЛЕРТИНГУ
+============================================================
+
+Дата тестирования: 2025-12-05T06:23:54.842487
+
+Prometheus доступность: PASS
+Grafana доступность: PASS
+Flink метрики: PASS
+Kafka метрики: PASS
+Alert правила: PASS
+
+Итого: 5/5
+Процент успеха: 100.0%
+
+============================================================
+ДОСТУП К ИНТЕРФЕЙСАМ
+============================================================
+Prometheus UI: http://localhost:9090
+Grafana UI: http://localhost:3000 (admin/admin)
+Flink UI: http://localhost:8081
+Kafka UI: localhost:9092 (через CLI)
+
+============================================================
+КЛЮЧЕВЫЕ АЛЕРТЫ
+============================================================
+1. HighKafkaLag: kafka_consumergroup_lag > 1000 (5m)
+2. HighFlinkProcessingLatency: flink_taskmanager_job_task_operator_currentEmitEventTimeLag > 1000 (1m)
+3. MLModelPredictionDrift: data_drift_score > 0.2 (10m)
+4. HighMLInferenceLatency: ml_inference_latency_p95 > 75 (5m)
+5. FlinkCheckpointFailures: increase(flink_jobmanager_job_numberOfFailedCheckpoints[5m]) > 0
+
+============================================================
+СТРАТЕГИЯ РЕАГИРОВАНИЯ НА АЛЕРТЫ
+============================================================
+Критические (severity: critical):
+  - Время реакции: < 15 минут
+  - Действия: Немедленное устранение, возможно остановка pipeline
+  - Примеры: Kafka недоступен, Flink TaskManager down
+
+Предупреждения (severity: warning):
+  - Время реакции: < 60 минут
+  - Действия: Анализ и планирование исправлений
+  - Примеры: Высокий lag, data drift, повышенная латенси
+
+Информационные (severity: info):
+  - Время реакции: < 24 часа
+  - Действия: Мониторинг трендов
+  - Примеры: Рост использования ресурсов, изменения в throughput

@@ -1,0 +1,19 @@
+# flink/conf/flink-conf.yaml
+# Конфигурация метрик Flink для Prometheus
+metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+metrics.reporter.prom.port: 9250
+metrics.reporter.prom.filter.includes: "*"
+metrics.reporter.prom.interval: 15 SECONDS
+
+# Общие настройки метрик
+metrics.scope.jm: <host>.jobmanager.<job_name>
+metrics.scope.jm.job: <host>.jobmanager.<job_name>.<job_id>
+metrics.scope.tm: <host>.taskmanager.<tm_id>
+metrics.scope.tm.job: <host>.taskmanager.<tm_id>.<job_name>.<job_id>
+metrics.scope.task: <host>.taskmanager.<tm_id>.<job_name>.<job_id>.<task_name>.<subtask_index>
+metrics.scope.operator: <host>.taskmanager.<tm_id>.<job_name>.<job_id>.<operator_name>.<subtask_index>
+
+# Настройки для лучшего мониторинга
+metrics.latency.interval: 1000
+metrics.reporter.slf4j.factory.class: org.apache.flink.metrics.slf4j.Slf4jReporterFactory
+metrics.reporter.slf4j.interval: 60 SECONDS
